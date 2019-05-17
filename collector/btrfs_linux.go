@@ -11,10 +11,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// +build !nobtrfs
+
 package collector
 
 import (
 	"fmt"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/procfs/btrfs"
 )
@@ -44,7 +47,7 @@ func NewBtrfsCollector() (Collector, error) {
 func (c *btrfsCollector) Update(ch chan<- prometheus.Metric) error {
 	stats, err := c.fs.Stats()
 	if err != nil {
-		return fmt.Errorf("failed to retrieve XFS stats: %v", err)
+		return fmt.Errorf("failed to retrieve Btrfs stats: %v", err)
 	}
 
 	for _, s := range stats {
@@ -109,7 +112,7 @@ func (c *btrfsCollector) updateBtrfsStats(ch chan<- prometheus.Metric, s *btrfs.
 			nil,
 		)
 
-		labelValues := []string{s.Label, s.MetadataUUID}
+		labelValues := []string{s.Label, s.UUID}
 		if len(m.extraLabelValue) > 0 {
 			labelValues = append(labelValues, m.extraLabelValue...)
 		}
@@ -126,16 +129,9 @@ func (c *btrfsCollector) updateBtrfsStats(ch chan<- prometheus.Metric, s *btrfs.
 func (c *btrfsCollector) getAllocationStats(a string, s *btrfs.AllocationStats) []btrfsMetric {
 	metrics := []btrfsMetric{
 		{
-			name:            "disk_used_bytes",
-			desc:            "Amount of used space by a data type",
-			value:           float64(s.DiskUsedBytes),
-			extraLabel:      []string{"type"},
-			extraLabelValue: []string{a},
-		},
-		{
-			name:            "disk_total_bytes",
-			desc:            "Amount of space allocated for a data type",
-			value:           float64(s.DiskTotalBytes),
+			name:            "reserved_bytes",
+			desc:            "Amount of space reserved for a data type",
+			value:           float64(s.ReservedBytes),
 			extraLabel:      []string{"type"},
 			extraLabelValue: []string{a},
 		},
@@ -169,6 +165,13 @@ func (c *btrfsCollector) getLayoutStats(a, l string, s *btrfs.LayoutUsage) []btr
 			name:            "total_bytes",
 			desc:            "Amount of space allocated for a layout/data type",
 			value:           float64(s.TotalBytes),
+			extraLabel:      []string{"type", "mode"},
+			extraLabelValue: []string{a, l},
+		},
+		{
+			name:            "ratio",
+			desc:            "Data allocation ratio for a layout/data type",
+			value:           s.Ratio,
 			extraLabel:      []string{"type", "mode"},
 			extraLabelValue: []string{a, l},
 		},
