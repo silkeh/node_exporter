@@ -31,7 +31,7 @@ func init() {
 	registerCollector("btrfs", defaultEnabled, NewBtrfsCollector)
 }
 
-// NewBtrfsCollector returns a new Collector exposing XFS statistics.
+// NewBtrfsCollector returns a new Collector exposing Btrfs statistics.
 func NewBtrfsCollector() (Collector, error) {
 	fs, err := btrfs.NewFS(*sysPath)
 	if err != nil {
@@ -43,7 +43,8 @@ func NewBtrfsCollector() (Collector, error) {
 	}, nil
 }
 
-// Update implements Collector.
+// Update retrieves and exports Btrfs statistics.
+// It implements Collector.
 func (c *btrfsCollector) Update(ch chan<- prometheus.Metric) error {
 	stats, err := c.fs.Stats()
 	if err != nil {
@@ -57,21 +58,20 @@ func (c *btrfsCollector) Update(ch chan<- prometheus.Metric) error {
 	return nil
 }
 
+// btrfsMetric represents a single Btrfs metric that is converted into a Prometheus Metric.
 type btrfsMetric struct {
-	name  string
-	desc  string
-	value float64
-	//metricType      prometheus.ValueType
+	name            string
+	desc            string
+	value           float64
 	extraLabel      []string
 	extraLabelValue []string
 }
 
-// UpdateBtrfsStats collects statistics for one bcache ID.
+// updateBtrfsStats collects statistics for one bcache ID.
 func (c *btrfsCollector) updateBtrfsStats(ch chan<- prometheus.Metric, s *btrfs.Stats) {
-	const (
-		subsystem = "btrfs"
-	)
+	const subsystem = "btrfs"
 
+	// Basic information about het filesystem
 	devLabels := []string{"label", "uuid"}
 	metrics := []btrfsMetric{
 		{
@@ -86,22 +86,25 @@ func (c *btrfsCollector) updateBtrfsStats(ch chan<- prometheus.Metric, s *btrfs.
 		},
 	}
 
+	// Information about devices
 	for n, dev := range s.Devices {
 		metrics = append(metrics, []btrfsMetric{
 			{
-				name:  "device_size",
-				desc:  "Size of a device that is part of the filesystem.",
-				value: float64(dev.Size),
+				name:            "device_size",
+				desc:            "Size of a device that is part of the filesystem.",
+				value:           float64(dev.Size),
 				extraLabel:      []string{"device"},
 				extraLabelValue: []string{n},
 			},
 		}...)
 	}
 
+	// Information about data, metadata and system data
 	metrics = append(metrics, c.getAllocationStats("data", s.Allocation.Data)...)
 	metrics = append(metrics, c.getAllocationStats("metadata", s.Allocation.Metadata)...)
 	metrics = append(metrics, c.getAllocationStats("system", s.Allocation.System)...)
 
+	// Convert all gathered metrics to Prometheus Metrics and add to channel.
 	for _, m := range metrics {
 		labels := append(devLabels, m.extraLabel...)
 
@@ -126,6 +129,7 @@ func (c *btrfsCollector) updateBtrfsStats(ch chan<- prometheus.Metric, s *btrfs.
 	}
 }
 
+// getAllocationStats returns allocation metrics for
 func (c *btrfsCollector) getAllocationStats(a string, s *btrfs.AllocationStats) []btrfsMetric {
 	metrics := []btrfsMetric{
 		{
@@ -137,22 +141,16 @@ func (c *btrfsCollector) getAllocationStats(a string, s *btrfs.AllocationStats) 
 		},
 	}
 
-	metrics = append(metrics, c.getLayoutStats(a, "single", s.Single)...)
-	metrics = append(metrics, c.getLayoutStats(a, "dup", s.Dup)...)
-	metrics = append(metrics, c.getLayoutStats(a, "raid0", s.Raid0)...)
-	metrics = append(metrics, c.getLayoutStats(a, "raid1", s.Raid1)...)
-	metrics = append(metrics, c.getLayoutStats(a, "raid5", s.Raid5)...)
-	metrics = append(metrics, c.getLayoutStats(a, "raid6", s.Raid6)...)
-	metrics = append(metrics, c.getLayoutStats(a, "raid10", s.Raid10)...)
+	// Add all layout statistics
+	for layout, stats := range s.Layouts {
+		metrics = append(metrics, c.getLayoutStats(a, layout, stats)...)
+	}
 
 	return metrics
 }
 
+// getLayoutStats returns metrics for a data layout
 func (c *btrfsCollector) getLayoutStats(a, l string, s *btrfs.LayoutUsage) []btrfsMetric {
-	if s == nil {
-		return nil
-	}
-
 	return []btrfsMetric{
 		{
 			name:            "used_bytes",
